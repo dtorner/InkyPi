@@ -1,0 +1,457 @@
+{% extends "plugin.html" %}
+
+{% block content %}
+<div id="units-container" data-units="{{ units }}"></div>
+
+<div class="weather-dashboard">
+  {% if plugin_settings.displayRefreshTime == "true" %}
+  <div class="last-refresh">{{ last_refresh_time }}</div>
+  {% endif %}
+  <!-- Current Date -->
+  <div class="header">
+    <div class="current-date">{{ current_date }}</div>
+  </div>
+
+  <div class="today-container">
+    <!-- Current Weather Row -->
+    <div class="current-temperature">
+      <!-- Icon + Temperature -->
+        <img class="current-icon" src="{{current_day_icon}}" alt="Current Weather Icon">
+        <div class="current-weather">
+          <div class="current-temp">{{ current_temperature }}<span class="temperature-unit">{{temperature_unit}}</span></div>
+          <div class="feels-like">Sensación {{ feels_like }}{% if units != "standard" %}°{% endif %}</div>
+          <div class="min-max">{{ forecast[0].high }}{% if units != "standard" %}°{% endif %} / {{ forecast[0].low }}{% if units != "standard" %}°{% endif %}</div>
+        </div>
+    </div>
+
+    <!-- Data Points Grid (Sunset, Wind, UV, etc.) -->
+    {% if plugin_settings.displayMetrics and  plugin_settings.displayMetrics == "true" %}
+    <div class="data-points">
+      {% for dp in data_points %}
+        <div class="data-point column-container">
+          <div class="data-point-img-container">
+            <img class="data-point-icon" src="{{dp.icon}}" alt="{{ dp.label }}">
+          </div>
+          <div class="data-point-data">
+            <div class="data-point-label">{{ dp.label }}</div>
+            <div class="data-point-measurement">
+			        {{ dp.measurement }}{% if dp.unit %}<span class="data-point-unit">{{ dp.unit }}</span>{% endif %}
+              {% if dp.arrow != "" %}
+                <span class="wind-arrow-symbol">{{ dp.arrow }}</span>
+              {% endif %}
+		    	 </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Forecast Row -->
+  {% if plugin_settings.displayForecast and plugin_settings.displayForecast == "true" %}
+  <div class="forecast">
+    {% for day in forecast[1:(plugin_settings.forecastDays | int) + 1] %}
+      {% if day.wind_speed > 30 %}<div class="forecast-day-wind">{%else%}<div class="forecast-day">{% endif %}
+        <div class="forecast-temps">
+          <span class="forecast-day-name">{{ day.day }}</span>
+          <span class="high">{{ day.high }}{% if units != "standard" %}°{% endif %}</span>/
+          <span class="low">{{ day.low }}{% if units != "standard" %}°{% endif %}</span>
+        </div>
+        <img class="forecast-icon" src="{{day.icon}}" alt="{{ day.day }} Weather Icon">
+        <div class="forecast-temps">
+          <span class="high">{{ day.wind_speed }} km/h</span>
+        </div>  
+        {% if plugin_settings.moonPhase and plugin_settings.moonPhase == "true" %}
+        <div class="separator"></div>
+        <div class="moon-phase-container">
+        <img class="moon-phase-icon" src="{{day.moon_phase_icon}}" alt="Moon phase icon">
+        <span style="flex: 1;">{{day.moon_phase_pct}} %</span>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+
+<!-- Hourly Graphs -->
+  
+  {% if plugin_settings.displayGraph and plugin_settings.displayGraph == "true" %}
+  <div class="charts-row">
+    <div class="chart-container">
+      <canvas id="hourlyTemperatureChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <canvas id="hourlyRainChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <canvas id="hourlyWindChart"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script src="{{static_dir}}/scripts/chart.js" charset="UTF-8"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const canvas = document.getElementById('hourlyTemperatureChart');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+
+    // Extract hourly temperature and labels from template variables
+    const labels = [{% for hour in hourly_forecast %}"{{ hour.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    const temperatures = [{% for hour in hourly_forecast %}{{ hour.temperature }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    	
+    // Find min and max temperatures
+    const minTemp = Math.min(...temperatures) -1;
+    var maxTemp = Math.max(...temperatures) +1;
+	
+    {% if plugin_settings.displayGraphIcons == "true" %}
+    Chart.register({
+      id: 'chartIcons',
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea: { bottom }, scales: { x } } = chart;
+        const iconSize = 22;
+
+        ctx.save();
+        chart.getDatasetMeta(0).data.forEach((point, i) => {
+
+		if (i % iconStep !== 0) return;
+
+          const img = new Image();
+          img.src = weatherIconsPaths[i];
+          const xPos = point.x - (iconSize / 2);
+          const yPos = bottom + 25;
+
+          if (img.complete) {
+            ctx.drawImage(img, xPos, yPos, iconSize, iconSize);
+          } else {
+            img.onload = () => ctx.drawImage(img, xPos, yPos, iconSize, iconSize);
+          }
+        });
+        ctx.restore();
+      }
+    });
+    {% endif %}
+
+
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          type: 'line',
+          label: 'Temperatura',
+          data: temperatures,
+          borderColor: 'rgba(241, 122, 36, 0.9)', // Line color
+          borderWidth: 2,
+          pointRadius: 0, // Hide points
+          fill: true, // Enable filling the area under the line
+          tension: 0.5
+        },
+        {
+          type: 'bar',
+          data: [
+            {x: "00:00", y: 100}
+          ],
+          maxBarThickness: 2,
+          backgroundColor: '#808080',
+        }
+      ]
+      },
+      options: {
+        animation: {
+          duration: 0, // general animation time
+        },
+        
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: {
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === 1) return this.getLabelForValue(value);
+                else if (index === 5) return this.getLabelForValue(value);
+                else if (index === 9) return this.getLabelForValue(value);
+                else if (index === 13) return this.getLabelForValue(value);
+                else if (index === 17) return this.getLabelForValue(value);
+                else if (index === 21) return this.getLabelForValue(value);
+                else return '';
+              },
+              padding: 2,
+              maxRotation: 0, // Prevent label rotation
+              minRotation: 0, // Prevent label rotation
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost',
+                weight: 'bold'
+              }
+            },
+            grid: {
+              tickLength: 0,
+              display: false // Hide x-axis grid
+            },
+            offset: false,
+            gridLines: {
+                drawBorder: false,
+            }
+          },
+          y: {
+            ticks: {
+              padding: 0,
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost'
+              },
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === values.length-1) return maxTemp + "°";
+                else if (index === 0) return minTemp + "°";
+                else return '';
+              }
+            },
+            grid: { display: false },
+            min: minTemp,
+            max: maxTemp,
+          },
+        
+        },
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Temperatura (°C)'
+          }
+        },
+        elements: {
+          line: {
+            borderJoinStyle: 'round' // Smoother line connection
+          }
+        }
+      }
+    });
+
+    chart.update();
+
+    // Now, after the chart is created, we can access the scales
+    const gradientStart = chart.scales['y'].getPixelForValue(maxTemp); // Max temperature
+    const gradientEnd = chart.scales['y'].getPixelForValue(minTemp);   // Min temperature
+
+    // Create gradient based on y-axis values
+    const tempGradient = ctx.createLinearGradient(0, gradientStart, 0, gradientEnd+10);
+    tempGradient.addColorStop(0, 'rgba(252,204,5, 0.95)'); // Top of the gradient (max temperature)
+    tempGradient.addColorStop(1, 'rgba(252,204,5, 0.01)'); // Bottom of the gradient (min temperature)
+
+    // Update the chart to apply the gradient
+    chart.data.datasets[0].backgroundColor = tempGradient;
+    chart.update();
+  });
+</script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const canvas = document.getElementById('hourlyRainChart');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+
+    // Extract hourly temperature and labels from template variables
+    const labels = [{% for hour in hourly_forecast %}"{{ hour.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    const rain = [{% for hour in hourly_forecast %}{{ hour.rain or 0 }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    //const bgcolor = [{% for hour in hourly_forecast %}"{{ '#9124BC' if hour.rain and hour.rain > 0.5 else '#666' }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+	
+    var maxRain = Math.max(...rain) + 1;
+	
+    const chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          type: 'bar',
+          data: rain,
+          backgroundColor: '#9124BC',
+          borderColor: '#9124BC',
+          borderWidth: 1,
+          barPercentage: 1.6,
+        },
+        {
+          type: 'bar',
+          data: [
+            {x: "00:00", y: 100}
+          ],
+          maxBarThickness: 2,
+          backgroundColor: '#808080',
+        }
+      ]
+      },
+      options: {
+        animation: {
+          duration: 0, // general animation time
+        },
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: {
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === 1) return this.getLabelForValue(value);
+                else if (index === 5) return this.getLabelForValue(value);
+                else if (index === 9) return this.getLabelForValue(value);
+                else if (index === 13) return this.getLabelForValue(value);
+                else if (index === 17) return this.getLabelForValue(value);
+                else if (index === 21) return this.getLabelForValue(value);
+                else return '';
+              },
+              padding: 2,
+              maxRotation: 0, // Prevent label rotation
+              minRotation: 0, // Prevent label rotation
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost',
+                weight: 'bold'
+              }
+            },
+            grid: {
+              tickLength: 0,
+              display: false // Hide x-axis grid
+            },
+            offset: true,
+            gridLines: {
+                drawBorder: false,
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              padding: 0,
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost'
+              },
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === values.length-1) return maxRain;
+                else if (index === 0) return "0";
+                else return '';
+              }
+            },
+            min: 0,
+            max: maxRain,
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Lluvia (mm)'
+          }      
+        },
+      }
+    });
+
+    chart.update();
+  });
+</script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const canvas = document.getElementById('hourlyWindChart');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+
+    // Extract hourly temperature and labels from template variables
+    const labels = [{% for hour in hourly_forecast %}"{{ hour.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    const wind = [{% for hour in hourly_forecast %}{{ hour.wind_speed }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    const bgcolor = [{% for hour in hourly_forecast %}"{{ '#F54927' if hour.wind_speed and hour.wind_speed > 30 else '#FFFFFF' }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          type: 'bar',
+          data: wind,
+          borderColor: '#0',  
+          backgroundColor: bgcolor,
+          borderWidth: 1,
+          barPercentage: 1.6, // Ensures full width
+        },
+        {
+          type: 'bar',
+          data: [
+            {x: "00:00", y: 75}
+          ],
+          maxBarThickness: 2,
+          backgroundColor: '#808080',
+        }
+      ]
+      },
+      options: {
+        animation: {
+          duration: 0, // general animation time
+        },
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: {
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === 1) return this.getLabelForValue(value);
+                else if (index === 5) return this.getLabelForValue(value);
+                else if (index === 9) return this.getLabelForValue(value);
+                else if (index === 13) return this.getLabelForValue(value);
+                else if (index === 17) return this.getLabelForValue(value);
+                else if (index === 21) return this.getLabelForValue(value);
+                else return '';
+              },
+              padding: 2,
+              maxRotation: 0, // Prevent label rotation
+              minRotation: 0, // Prevent label rotation
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost',
+                weight: 'bold'
+              }
+            },
+            grid: {
+              tickLength: 0,
+              display: false// Hide x-axis grid
+            },
+            offset: true
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              padding: 0,
+              color: "{{ plugin_settings.textColor }}",
+              font: {
+                family: 'Jost'
+              },
+              autoSkip: false,
+              callback: function(value, index, values) {
+                if (index === values.length - 1) return "75";
+                else if (index === 0) return "0";
+                else return '';
+              }
+            },
+            min: 0,
+            max: 75,
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Viento (km/h)'
+          }      
+        }
+      }
+    });
+    chart.update();
+  });
+</script>
+{% endblock %}
