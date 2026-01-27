@@ -50,11 +50,11 @@ WEATHER_URL = "https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lo
 AIR_QUALITY_URL = "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={long}&appid={api_key}"
 GEOCODING_URL = "http://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={long}&limit=1&appid={api_key}"
 
-OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={long}&hourly=weather_code,temperature_2m,wind_speed_10m,precipitation,precipitation_probability,relative_humidity_2m,surface_pressure,visibility&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,wind_speed_10m_max&current=temperature,windspeed,winddirection,is_day,precipitation,weather_code,apparent_temperature&timezone=auto&models=best_match&forecast_days={forecast_days}"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={long}&hourly=weather_code,temperature_2m,wind_gusts_10m,precipitation,precipitation_probability,relative_humidity_2m,surface_pressure,visibility&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,wind_gusts_10m_max&current=temperature,windspeed,winddirection,is_day,precipitation,weather_code,apparent_temperature&timezone=auto&models=best_match&forecast_days={forecast_days}"
 OPEN_METEO_AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={long}&hourly=european_aqi,uv_index,uv_index_clear_sky&timezone=auto"
 OPEN_METEO_UNIT_PARAMS = {
     "standard": "temperature_unit=kelvin&wind_speed_unit=ms&precipitation_unit=mm",
-    "metric":   "temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm",
+    "metric":   "",
     "imperial": "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
 }
 
@@ -159,7 +159,6 @@ class Weather(BasePlugin):
         }
         data['forecast'] = self.parse_forecast(weather_data.get('daily'), tz, current_suffix, lat)
         data['data_points'] = self.parse_data_points(weather_data, aqi_data, tz, units, time_format)
-
         data['hourly_forecast'] = self.parse_hourly(weather_data.get('hourly'), tz, time_format, units, daily_forecast)
         return data
 
@@ -183,7 +182,6 @@ class Weather(BasePlugin):
 
         data['forecast'] = self.parse_open_meteo_forecast(weather_data.get('daily', {}), tz, is_day, lat)
         data['data_points'] = self.parse_open_meteo_data_points(weather_data, aqi_data, tz, units, time_format)
-        
         data['hourly_forecast'] = self.parse_open_meteo_hourly(weather_data.get('hourly', {}), tz, time_format, daily.get('sunrise', []), daily.get('sunset', []))
         return data
 
@@ -316,6 +314,7 @@ class Weather(BasePlugin):
                     "high": int(day["temp"]["max"]),
                     "low": int(day["temp"]["min"]),
                     "icon": weather_icon_path,
+                    "wind_speed": int(day["wind_speed"]),
                     "moon_phase_pct": moon_pct,
                     "moon_phase_icon": moon_icon_path,
                 }
@@ -331,7 +330,7 @@ class Weather(BasePlugin):
         weather_codes = daily_data.get('weathercode', [])
         temp_max = daily_data.get('temperature_2m_max', [])
         temp_min = daily_data.get('temperature_2m_min', [])
-        wind_speed = daily_data.get('wind_speed_10m_max', [])
+        wind_speed = daily_data.get('wind_gusts_10m_max', [])
         #wind_speed_10m_max
 
         forecast = []
@@ -362,7 +361,6 @@ class Weather(BasePlugin):
             forecast.append({
                 "day": day_label,
                 "high": int(temp_max[i]) if i < len(temp_max) else 0,
-                #"high": int(wind_speed[i]) if i < len(wind_speed) else 0,
                 "low": int(temp_min[i]) if i < len(temp_min) else 0,
                 "icon": weather_icon_path,
                 "wind_speed": int(wind_speed[i]) if i < len(wind_speed) else 0,
@@ -406,7 +404,8 @@ class Weather(BasePlugin):
                 "temperature": int(hour.get("temp")),
                 "precipitation": hour.get("pop"),
                 "rain": round(precip_value, 2),
-                "icon": self.get_plugin_dir(f'icons/{icon_name}.png')
+                "icon": self.get_plugin_dir(f'icons/{icon_name}.png'),
+                "wind_speed": hour.get("wind_gust") * 3.6
             }
             hourly.append(hour_forecast)
         return hourly
@@ -418,14 +417,14 @@ class Weather(BasePlugin):
         precipitation_probabilities = hourly_data.get('precipitation_probability', [])
         rain = hourly_data.get('precipitation', [])
         codes = hourly_data.get('weather_code', [])
-
+        winds = hourly_data.get('wind_gusts_10m', [])
         sun_map = {}
         for sr_s, ss_s in zip(sunrises, sunsets):
             sr_dt = datetime.fromisoformat(sr_s).astimezone(tz)
             ss_dt = datetime.fromisoformat(ss_s).astimezone(tz)
             sun_map[sr_dt.date()] = (sr_dt, ss_dt)
 
-        winds = hourly_data.get('wind_speed_10m', [])
+        
         current_time_in_tz = datetime.now(tz)
         start_index = 0
         for i, time_str in enumerate(times):
@@ -496,7 +495,7 @@ class Weather(BasePlugin):
         wind_deg = weather.get('current', {}).get("wind_deg", 0)
         wind_arrow = self.get_wind_arrow(wind_deg)
         data_points.append({
-            "label": "Wind",
+            "label": "Viento",
             "measurement": weather.get('current', {}).get("wind_speed"),
             "unit": UNITS[units]["speed"],
             "icon": self.get_plugin_dir('icons/wind.png'),
@@ -504,42 +503,42 @@ class Weather(BasePlugin):
         })
 
         data_points.append({
-            "label": "Humidity",
+            "label": "Humedad",
             "measurement": weather.get('current', {}).get("humidity"),
             "unit": '%',
             "icon": self.get_plugin_dir('icons/humidity.png')
         })
 
         data_points.append({
-            "label": "Pressure",
+            "label": "Presión",
             "measurement": weather.get('current', {}).get("pressure"),
             "unit": 'hPa',
             "icon": self.get_plugin_dir('icons/pressure.png')
         })
 
         data_points.append({
-            "label": "UV Index",
+            "label": "Índice UV",
             "measurement": weather.get('current', {}).get("uvi"),
             "unit": '',
             "icon": self.get_plugin_dir('icons/uvi.png')
         })
 
-        visibility = weather.get('current', {}).get("visibility")/1000
-        visibility_str = f">{visibility}" if visibility >= 10 else visibility
-        data_points.append({
-            "label": "Visibility",
-            "measurement": visibility_str,
-            "unit": 'km',
-            "icon": self.get_plugin_dir('icons/visibility.png')
-        })
+        # visibility = weather.get('current', {}).get("visibility")/1000
+        # visibility_str = f">{visibility}" if visibility >= 10 else visibility
+        # data_points.append({
+        #     "label": "Visibility",
+        #     "measurement": visibility_str,
+        #     "unit": 'km',
+        #     "icon": self.get_plugin_dir('icons/visibility.png')
+        # })
 
-        aqi = air_quality.get('list', [])[0].get("main", {}).get("aqi")
-        data_points.append({
-            "label": "Air Quality",
-            "measurement": aqi,
-            "unit": ["Good", "Fair", "Moderate", "Poor", "Very Poor"][int(aqi)-1],
-            "icon": self.get_plugin_dir('icons/aqi.png')
-        })
+        # aqi = air_quality.get('list', [])[0].get("main", {}).get("aqi")
+        # data_points.append({
+        #     "label": "Air Quality",
+        #     "measurement": aqi,
+        #     "unit": ["Good", "Fair", "Moderate", "Poor", "Very Poor"][int(aqi)-1],
+        #     "icon": self.get_plugin_dir('icons/aqi.png')
+        # })
 
         return data_points
 
@@ -640,53 +639,53 @@ class Weather(BasePlugin):
         })
 
         # Visibility
-        current_visibility = "N/A"
-        visibility_hourly_times = hourly_data.get('time', [])
-        visibility_values = hourly_data.get('visibility', [])
-        for i, time_str in enumerate(visibility_hourly_times):
-            try:
-                if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
-                    visibility = visibility_values[i]
-                    if units == "imperial":
-                        current_visibility = int(round(visibility, 0))
-                        unit_label = "ft"
-                    else:
-                        current_visibility = round(visibility / 1000, 1)
-                        unit_label = "km"
-                    break
-            except ValueError:
-                logger.warning(f"Could not parse time string {time_str} for visibility.")
-                continue
+        # current_visibility = "N/A"
+        # visibility_hourly_times = hourly_data.get('time', [])
+        # visibility_values = hourly_data.get('visibility', [])
+        # for i, time_str in enumerate(visibility_hourly_times):
+        #     try:
+        #         if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
+        #             visibility = visibility_values[i]
+        #             if units == "imperial":
+        #                 current_visibility = int(round(visibility, 0))
+        #                 unit_label = "ft"
+        #             else:
+        #                 current_visibility = round(visibility / 1000, 1)
+        #                 unit_label = "km"
+        #             break
+        #     except ValueError:
+        #         logger.warning(f"Could not parse time string {time_str} for visibility.")
+        #         continue
 
-        visibility_str = f">{current_visibility}" if isinstance(current_visibility, (int, float)) and (
-            (units == "imperial" and current_visibility >= 32808) or 
-            (units != "imperial" and current_visibility >= 10)
-        ) else current_visibility
+        # visibility_str = f">{current_visibility}" if isinstance(current_visibility, (int, float)) and (
+        #     (units == "imperial" and current_visibility >= 32808) or 
+        #     (units != "imperial" and current_visibility >= 10)
+        # ) else current_visibility
 
-        data_points.append({
-            "label": "Visibilidad", "measurement": visibility_str, "unit": unit_label,
-            "icon": self.get_plugin_dir('icons/visibility.png')
-        })
+        # data_points.append({
+        #     "label": "Visibilidad", "measurement": visibility_str, "unit": unit_label,
+        #     "icon": self.get_plugin_dir('icons/visibility.png')
+        # })
 
-        # Air Quality
-        aqi_hourly_times = aqi_data.get('hourly', {}).get('time', [])
-        aqi_values = aqi_data.get('hourly', {}).get('european_aqi', [])
-        current_aqi = "N/A"
-        for i, time_str in enumerate(aqi_hourly_times):
-            try:
-                if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
-                    current_aqi = round(aqi_values[i], 1)
-                    break
-            except ValueError:
-                logger.warning(f"Could not parse time string {time_str} for AQI.")
-                continue
-        scale = ""
-        if current_aqi:
-            scale = ["Good","Fair","Moderate","Poor","Very Poor","Ext Poor"][min(current_aqi//20,5)]
-        data_points.append({
-            "label": "Air Quality", "measurement": current_aqi,
-            "unit": scale, "icon": self.get_plugin_dir('icons/aqi.png')
-        })
+        # # Air Quality
+        # aqi_hourly_times = aqi_data.get('hourly', {}).get('time', [])
+        # aqi_values = aqi_data.get('hourly', {}).get('european_aqi', [])
+        # current_aqi = "N/A"
+        # for i, time_str in enumerate(aqi_hourly_times):
+        #     try:
+        #         if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
+        #             current_aqi = round(aqi_values[i], 1)
+        #             break
+        #     except ValueError:
+        #         logger.warning(f"Could not parse time string {time_str} for AQI.")
+        #         continue
+        # scale = ""
+        # if current_aqi:
+        #     scale = ["Good","Fair","Moderate","Poor","Very Poor","Ext Poor"][min(current_aqi//20,5)]
+        # data_points.append({
+        #     "label": "Air Quality", "measurement": current_aqi,
+        #     "unit": scale, "icon": self.get_plugin_dir('icons/aqi.png')
+        # })
 
         return data_points
 
@@ -711,7 +710,7 @@ class Weather(BasePlugin):
 
     def get_weather_data(self, api_key, units, lat, long):
         url = WEATHER_URL.format(lat=lat, long=long, units=units, api_key=api_key)
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logging.error(f"Failed to retrieve weather data: {response.content}")
             raise RuntimeError("Failed to retrieve weather data.")
@@ -720,7 +719,7 @@ class Weather(BasePlugin):
 
     def get_air_quality(self, api_key, lat, long):
         url = AIR_QUALITY_URL.format(lat=lat, long=long, api_key=api_key)
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
 
         if not 200 <= response.status_code < 300:
             logging.error(f"Failed to get air quality data: {response.content}")
@@ -730,7 +729,7 @@ class Weather(BasePlugin):
 
     def get_location(self, api_key, lat, long):
         url = GEOCODING_URL.format(lat=lat, long=long, api_key=api_key)
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
 
         if not 200 <= response.status_code < 300:
             logging.error(f"Failed to get location: {response.content}")
@@ -744,7 +743,7 @@ class Weather(BasePlugin):
     def get_open_meteo_data(self, lat, long, units, forecast_days):
         unit_params = OPEN_METEO_UNIT_PARAMS[units]
         url = OPEN_METEO_FORECAST_URL.format(lat=lat, long=long, forecast_days=forecast_days) + f"&{unit_params}"
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
         
         if not 200 <= response.status_code < 300:
             logging.error(f"Failed to retrieve Open-Meteo weather data: {response.content}")
@@ -754,7 +753,7 @@ class Weather(BasePlugin):
 
     def get_open_meteo_air_quality(self, lat, long):
         url = OPEN_METEO_AIR_QUALITY_URL.format(lat=lat, long=long)
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logging.error(f"Failed to retrieve Open-Meteo air quality data: {response.content}")
             raise RuntimeError("Failed to retrieve Open-Meteo air quality data.")

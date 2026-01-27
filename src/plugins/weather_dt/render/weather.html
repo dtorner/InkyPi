@@ -154,7 +154,7 @@
         {
           type: 'bar',
           data: [
-            {x: "00:00", y: 100}
+            {x: "00:00", y: maxTemp}
           ],
           maxBarThickness: 2,
           backgroundColor: '#808080',
@@ -173,12 +173,10 @@
             ticks: {
               autoSkip: false,
               callback: function(value, index, values) {
-                if (index === 1) return this.getLabelForValue(value);
-                else if (index === 5) return this.getLabelForValue(value);
+                if (index === 4) return this.getLabelForValue(value);
                 else if (index === 9) return this.getLabelForValue(value);
-                else if (index === 13) return this.getLabelForValue(value);
-                else if (index === 17) return this.getLabelForValue(value);
-                else if (index === 21) return this.getLabelForValue(value);
+                else if (index === 14) return this.getLabelForValue(value);
+                else if (index === 19) return this.getLabelForValue(value);
                 else return '';
               },
               padding: 2,
@@ -262,7 +260,7 @@
     const rain = [{% for hour in hourly_forecast %}{{ hour.rain or 0 }}{% if not loop.last %}, {% endif %}{% endfor %}];
     //const bgcolor = [{% for hour in hourly_forecast %}"{{ '#9124BC' if hour.rain and hour.rain > 0.5 else '#666' }}"{% if not loop.last %}, {% endif %}{% endfor %}];
 	
-    var maxRain = Math.max(...rain) + 1;
+    var maxRain = Math.round(Math.max(...rain) + 0.5);
 	
     const chart = new Chart(ctx, {
       type: 'bar',
@@ -273,13 +271,13 @@
           data: rain,
           backgroundColor: '#9124BC',
           borderColor: '#9124BC',
-          borderWidth: 1,
-          barPercentage: 1.6,
+          borderWidth: 2,
+          barPercentage: 2,
         },
         {
           type: 'bar',
           data: [
-            {x: "00:00", y: 100}
+            {x: "00:00", y: maxRain}
           ],
           maxBarThickness: 2,
           backgroundColor: '#808080',
@@ -297,12 +295,10 @@
             ticks: {
               autoSkip: false,
               callback: function(value, index, values) {
-                if (index === 1) return this.getLabelForValue(value);
-                else if (index === 5) return this.getLabelForValue(value);
+                if (index === 4) return this.getLabelForValue(value);
                 else if (index === 9) return this.getLabelForValue(value);
-                else if (index === 13) return this.getLabelForValue(value);
-                else if (index === 17) return this.getLabelForValue(value);
-                else if (index === 21) return this.getLabelForValue(value);
+                else if (index === 14) return this.getLabelForValue(value);
+                else if (index === 19) return this.getLabelForValue(value);
                 else return '';
               },
               padding: 2,
@@ -365,7 +361,7 @@
     // Extract hourly temperature and labels from template variables
     const labels = [{% for hour in hourly_forecast %}"{{ hour.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
     const wind = [{% for hour in hourly_forecast %}{{ hour.wind_speed }}{% if not loop.last %}, {% endif %}{% endfor %}];
-    const bgcolor = [{% for hour in hourly_forecast %}"{{ '#F54927' if hour.wind_speed and hour.wind_speed > 30 else '#FFFFFF' }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    const bgcolor = [{% for hour in hourly_forecast %}"{{ '#F54927' if hour.wind_speed  > 30 and hour.wind_speed > 30 else '#FFFFFF' }}"{% if not loop.last %}, {% endif %}{% endfor %}];
     
     const chart = new Chart(ctx, {
       type: 'line',
@@ -376,8 +372,13 @@
           data: wind,
           borderColor: '#0',  
           backgroundColor: bgcolor,
-          borderWidth: 1,
-          barPercentage: 1.6, // Ensures full width
+          borderWidth: {
+            top: 2,
+            right: 0,
+            bottom: 0,
+            left: 0
+          },
+          barPercentage: 2, // Ensures full width
         },
         {
           type: 'bar',
@@ -400,12 +401,10 @@
             ticks: {
               autoSkip: false,
               callback: function(value, index, values) {
-                if (index === 1) return this.getLabelForValue(value);
-                else if (index === 5) return this.getLabelForValue(value);
+                if (index === 4) return this.getLabelForValue(value);
                 else if (index === 9) return this.getLabelForValue(value);
-                else if (index === 13) return this.getLabelForValue(value);
-                else if (index === 17) return this.getLabelForValue(value);
-                else if (index === 21) return this.getLabelForValue(value);
+                else if (index === 14) return this.getLabelForValue(value);
+                else if (index === 19) return this.getLabelForValue(value);
                 else return '';
               },
               padding: 2,
